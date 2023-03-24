@@ -165,43 +165,41 @@ def clean_up(delete):
     print('\n')
 
 
-    def main(FID):
-        """
-        Does all the work for each FID, one at a time.
-        """
-        filename = f'FID_{FID}'
-        path_FID = path_data / str(FID)
-        print(f"\nProcessing {filename}...\n")
+def main(FID):
+    """
+    Does all the work for each FID, one at a time.
+    """
+    filename = f'FID_{FID}'
+    path_FID = path_data / str(FID)
+    print(f"\nProcessing {filename}...\n")
 
-        # Step 1: Check if FID is valid
-        if not get_valid_FIDs(FID):
-            print(f"***ERROR*** Invalid FID: {FID}\n")
-            return
+    # Step 1: Copy files to DayCent folder
+    copy_files_in(filenames, path_FID)
 
-        # Step 2: Copy files to DayCent folder
-        copy_files_in(filenames, path_FID)
+    # Step 2: Run DayCent and save output
+    results = []
+    for sch, append in schedule_files.items():
+        success = run_daycent(filename, sch, append)
+        results.append(success)
 
-        # Step 3: Run DayCent and save output
-        results = []
-        for sch, append in schedule_files.items():
-            success = run_daycent(filename, sch, append)
-            results.append(success)
+    # Step 3: Convert output files to .lis format
+    for sch, _ in schedule_files.items():
+        if all(results):  # Check if all runs were successful
+            convert_output(filename, sch)
 
-        # Step 4: Convert output files to .lis format
-        for sch, _ in schedule_files.items():
-            if all(results):  # Check if all runs were successful
-                convert_output(filename, sch)
+    # Step 4: Copy output files to data directory
+    if all(results):
+        copy_files_out(files_to_copy_out, path_FID / "output")
 
-        # Step 5: Copy output files to data directory
-        if all(results):
-            copy_files_out(files_to_copy_out, path_FID / "output")
+    # Step 5: Clean up the working directory
+    clean_up(files_to_delete)
 
-        # Step 6: Clean up the working directory
-        clean_up(files_to_delete)
-
-        print(f"Done processing {filename}\n")
+    print(f"Done processing {filename}\n")
 
 
-    if __name__ == "__main__":
-        FID = int(input("Enter FID: "))
+if __name__ == "__main__":
+    # Get valid FIDs
+    valid_FIDs = get_valid_FIDs()
+    # Run each FID
+    for FID in valid_FIDs:
         main(FID)
