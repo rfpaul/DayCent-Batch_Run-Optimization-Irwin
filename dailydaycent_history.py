@@ -26,219 +26,182 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
-##=====================Library imports===============================
 import csv
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 
-##====================Global variables==============================
-path_model = "C:\\Illinois_DayCent\\"	#---change this to wherever the model sits---
-path_data = path_model+"sites\\FID"				#---change this to wherever the data sits---
-path_valid = path_model+"fid_loc_landuse_valid.csv" #---this is the list of valid FIDs
-##===================Function definitions==========================
+path_model = Path("C:/Illinois_DayCent/")
+path_data = path_model / "sites/FID"
+path_valid = path_model / "fid_loc_landuse_valid.csv"
+
+
 def get_outfiles():
-# Go through outfiles.in and collect output file names into a list
-    path_outfiles = path_model+"outfiles.in"
+    """
+    Go through outfiles.in and collect output file names into a list.
+    """
+    path_outfiles = path_model / "outfiles.in"
     outfiles = []
 
-    with open(path_outfiles, 'r') as outs:
+    with path_outfiles.open('r') as outs:
         for line in outs:
             line = line.split()
-            if line[0] is '1':
+            if line[0] == '1':
                 outfiles.append(line[1])
     return outfiles
 
+
 def get_valid_FIDs():
-# Return a list of valid FID values
+    """
+    Return a list of valid FID values.
+    """
     valid_list = []
-    with open(path_valid, 'r') as valid_csv:
+    with path_valid.open('r') as valid_csv:
         reader = csv.reader(valid_csv, dialect='excel')
-        next(reader, 0)
+        next(reader, None)
         for row in reader:
             valid_list.append(int(row[0]))
     return valid_list
 
-def get_FID_history (FID):
-# Get the land history asssociated with the FID
-    with open(path_valid, 'r') as valid_csv:
+
+def get_FID_history(FID):
+    """
+    Get the land history associated with the FID.
+    """
+    with path_valid.open('r') as valid_csv:
         history = csv.reader(valid_csv, dialect='excel')
         found_hist = "INVALID FID"
-        next(history, 0)
+        next(history, None)
         for row in history:
             if FID == int(row[0]):  # FID match check
-                found_hist = row[3] # The column of land use
+                found_hist = row[3]  # The column of land use
                 return found_hist
     return found_hist
 
 
-def copy_files_in (filenames, path_FID):
-#copies files into the DayCent folder for the current field
+def copy_files_in(filenames, path_FID):
+    """
+    Copies files into the DayCent folder for the current field.
+    """
     for file in filenames:
         try:
-            shutil.copy(path_FID+file, path_model)     #---copy command---
-            print("Copied file {} into working directory\n".format(file))
+            shutil.copy(path_FID / file, path_model)
+            print(f"Copied file {file} into working directory\n")
         except IOError as e:
-            print("***ERROR*** Could not find {0}{1}\n".format(path_FID, file))
-    
-def DayCent (filename, sch, append):
-#runs DayCent for a given field and (schedule_file, output) pair
-    print ("Ready to run {0}{1}\n".format(sch, filename))
-    args = [path_model+'DailyDayCent', '-s', sch, '-n', sch+filename, '-e', append]
-        #---all the arguments to run DayCent using thw Windows command line---
-    print(" ".join(args))
-        #---gets the arguments ready to run the model---
-    proc = subprocess.Popen(args,stdout=subprocess.PIPE)
-        #---opens the DayCent program---
-    results = str(proc.communicate()[0])
-        #---runs the DayCent program---
-    return save_output(results, 'DayCent_', sch+filename)
-        #---saves the output from DayCent to a file
+            print(f"***ERROR*** Could not find {path_FID}{file}\n")
 
-def save_output (results, program, filename):
-#saves the DayCent output to a text file
+
+def run_daycent(filename, sch, append):
+    """
+    Runs DayCent for a given field and (schedule_file, output) pair.
+    """
+    print(f"Ready to run {sch}{filename}\n")
+    args = [str(path_model / "DailyDayCent"), "-s", sch, "-n", f"{sch}{filename}", "-e", append]
+    print(" ".join(args))
+
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE)
+    results = str(proc.communicate()[0])
+    return save_output(results, "DayCent_", f"{sch}{filename}")
+
+
+def save_output(results, program, filename):
+    """
+    Saves the DayCent output to a text file.
+    """
     results = str(results[2:len(results)-1])
-        #---strips extra leading and trailing punctuation to make the output readable---
-    results = results.replace('\\n','\n')
-    results = results.replace('\\r','\r')
-    results = results.replace('\\t','\t')
-        #---fixes the special characters so the output will write to a file correctly---
-    
-    if results.find('success') is -1:
-        #---if the output does not contain the word 'success', i.e. DayCent ran with errors---
-        program = 'ERROR_'+program
-            #---add the word "ERROR" to the beginning of the output filename---
+    results = results.replace('\\n', '\n')
+    results = results.replace('\\r', '\r')
+    results = results.replace('\\t', '\t')
+
+    if "success" not in results:
+        program = f"ERROR_{program}"
         status = False
-        print ("***ERROR*** Unsuccessful run of {}\n".format(filename))
+        print(f"***ERROR*** Unsuccessful run of {filename}\n")
     else:
-        #---the output from DayCent ran without errors---
         status = True
-        print ("Successful run of {}\n".format(filename))
-    try:
-        os.makedirs(path_model+'output\\')
-    except:
-        pass
-    output = open('{0}output\\{1}{2}.txt'.format(path_model, program, filename), 'w')   #---creates text file---
-    output.write(results)           #---saves output to file---
-    output.close()
-    return status		#---reports whether DayCent ran without errors---
+        print(f"Successful run of {filename}\n")
 
-#def convert_output (filename, sch, variables):
-#runs DailyDayCent_list100.exe for FID
-#    inputs = sch+filename+'\n'+sch+filename+'\n\n\n'+'\n'.join(variables)+'\n'      #---inputs for DayCent_list100 program---
-#    proc = subprocess.Popen(path_model+'DailyDayCent_list100.exe', stdin=subprocess.PIPE, stdout=subprocess.PIPE)    #---runs program---
-#    results = str(proc.communicate(inputs.encode())[0])             #---sends inputs, gets output---
-#    print("\n\tMade .lis from "+sch+filename+"\n")
+    output_path = path_model / "output"
+    output_path.mkdir(exist_ok=True)
 
-def convert_output (filename, sch):
-#runs DailyDayCent_list100.exe for FID
-    args = [path_model+'DailyDayCent_list100.exe', sch+filename, sch+filename, "outvars.txt"] #---inputs for DayCent_list100 program---
-        #---all the arguments to run DayCent using thw Windows command line---
+    with (output_path / f"{program}{filename}.txt").open('w') as output:
+        output.write(results)
+    return status
+
+
+def convert_output(filename, sch):
+    """
+    Runs DailyDayCent_list100.exe for FID.
+    """
+    args = [str(path_model / "DailyDayCent_list100.exe"), f"{sch}{filename}", f"{sch}{filename}", "outvars.txt"]
     print(" ".join(args))
-         #---runs program---
-    proc = subprocess.Popen(args,stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-        #---sends inputs, gets output---
-    results = str(proc.communicate()[0])
-    print("\n\tMade .lis from {0}{1}\n".format(sch, filename))
 
-def index_containing_substring(the_list, substring):
-# return the index value of the list element containing substring
-    for i, s in enumerate(the_list):
-        if substring in s:
-              return i
-    return -1
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+    results = str(proc.communicate()[0])
+    print(f"\n\tMade .lis from {sch}{filename}\n")
+
 
 def copy_files_out(files, path_target):
-#copies output files to data directory
-    try:
-        os.mkdir(path_target)   #---makes the target directory if it doesn't exist---
-    except OSError:
-        #print("Could not make", path_target)
-        pass
+    """
+    Copies output files to data directory.
+    """
+    path_target.mkdir(parents=True, exist_ok=True)
     for file in files:
-        shutil.copy(path_model+file, path_target)     #---copies files for FID to data directory---
+        shutil.copy(path_model / file, path_target)
+
 
 def clean_up(delete):
-#deletes working files
+    """
+    Deletes working files.
+    """
     for file in delete:
         try:
-            os.remove(path_model+file)
-            print("X\tDeleting:", file)
+            (path_model / file).unlink()
+            print(f"X\tDeleting: {file}")
         except OSError:
             pass
     print('\n')
 
-##>>>>>>>>>>>>>>>>>>>>>>>>>>>>Main function<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-def main (FID):
-#does all the work for each FID, one at a time
-#---definitions for other functions it calls are above---
-    filename = 'FID_'+str(FID)              #---creates a convenient string for files associated with FID---
-    path_FID = path_data+str(FID)+'\\'      #---the directory for the field data---
+    def main(FID):
+        """
+        Does all the work for each FID, one at a time.
+        """
+        filename = f'FID_{FID}'
+        path_FID = path_data / str(FID)
+        print(f"\nProcessing {filename}...\n")
 
-    historical = get_FID_history(FID) # Get the historical land use type associated with the FID (from fid_hist_landuse.csv)
+        # Step 1: Check if FID is valid
+        if not get_valid_FIDs(FID):
+            print(f"***ERROR*** Invalid FID: {FID}\n")
+            return
 
-    filenames = [ 'FID_{}.wth'.format(str(FID)),  'FID_{}.100'.format(str(FID)), 'soils.in', 'aghistory\\aghistory.sch',
-                  "{0}\\{0}.sch".format(historical)]
-        #---filenames are the files for each field that DayCent needs to run---
-        #---these are the weather file, site file, soils.in, file and any .sch file required---
-    copy_files_in(filenames, path_FID)
-        #---this copies files defined above into the working directory---
+        # Step 2: Copy files to DayCent folder
+        copy_files_in(filenames, path_FID)
 
-    schedules = [('aghistory', 'spin'), (historical, 'aghistory'+filename)]
-        #---this is the list of schedule files and DayCent output pairs to run---
-        #---for example, ('schedule_file', 'output') will work like: 'DayCent -s schedule_file.sch -e output.bin'---
-        #---NOTE: THE ORDER IS IMPORTANT! The first pair in the list will run first. If you want to run a pair that---
-        #---will be needed by another model run, aghistory for example, make sure that is listed BEFORE the pair that will use it---
-        # Also, 'spin' is the equilibrium run
+        # Step 3: Run DayCent and save output
+        results = []
+        for sch, append in schedule_files.items():
+            success = run_daycent(filename, sch, append)
+            results.append(success)
 
-    #outputs = ['nflux.out', 'soiln.out', 'summary.out', 'year_summary.out']
-        #---output files from DayCent, as defined by outfiles.in---
-    
-    outputs = get_outfiles()
-    delete = outputs
-    delete.append('soils.in')
-        #---list of files to clean from the working directory---
+        # Step 4: Convert output files to .lis format
+        for sch, _ in schedule_files.items():
+            if all(results):  # Check if all runs were successful
+                convert_output(filename, sch)
 
-    while len(schedules) > 0:
-    #---this loop will run for each (schedule_file, output) pair listed above
-        sch, append = schedules.pop(0)
-            #---grabs the first (schedule_file, output) pair in the list---
-            #---this is why the order of the schedule files above is important---
-        status = DayCent(filename, sch, append)
-            #---runs DayCent for the current field and the (schedule_file, output) pair---
-        outputs.append(sch+filename+'.bin')    #---output files from DayCent---
-        delete.extend([sch+filename+'.bin', sch+'.sch'])      #---keeps track of the results to clean up later---
-        if sch != 'aghistory':
-            outputs.append(sch+'.sch')
-            #while (index_containing_substring(outputs, 'aghistory') != -1):
-            #    #---Ugly hack to keep aghistory outputs from being put into the historical directory---
-            #    outputs.pop(index_containing_substring(outputs, 'aghistory'))
-            
-        if status:                                      #---if DayCent ran successfully---
-            convert_output(filename, sch)               #---runs DayCent_list100---
-            outputs.append(sch+filename+'.lis')         #---adds the lis file to copy---
-            delete.append(sch+filename+'.lis')          #---adds the lis file to delete--
-            copy_files_out(outputs, path_FID+sch+'\\')  #---copies output files to data directory\schedule---
+        # Step 5: Copy output files to data directory
+        if all(results):
+            copy_files_out(files_to_copy_out, path_FID / "output")
 
-    delete.extend(["sites\\FID{0}\\{1}\\aghistory.sch".format(str(FID), historical),
-                   "sites\\FID{0}\\{1}\\aghistory{2}.bin".format(str(FID), historical, filename),
-                   "sites\\FID{0}\\{1}\\aghistory{2}.lis".format(str(FID), historical, filename)])
-            #---Ugly hack to remove aghistory outputs from the historical directory---
-    
-    delete.extend(['FID_{}.100'.format(str(FID)), 'FID_{}.wth'.format(str(FID)) ])     #---adds the site files to clean up---
-    clean_up(delete)    #---deletes the file for the given FID from the working directory---
+        # Step 6: Clean up the working directory
+        clean_up(files_to_delete)
 
-##=======================================Script Run Block begins================================ 
+        print(f"Done processing {filename}\n")
 
-valid_FIDs = get_valid_FIDs()
 
-FID_first = 114     #---Change this to the first FID to start from
-FID_last =  1458   #---Change this to the last FID to end at
-
-FIDs = [i for i in valid_FIDs if (i >= FID_first and i <= FID_last)] # Build list from first-to-last FIDs
-
-for FID in FIDs:
-    main(FID)	        #---a definition of main() is above---
+    if __name__ == "__main__":
+        FID = int(input("Enter FID: "))
+        main(FID)
